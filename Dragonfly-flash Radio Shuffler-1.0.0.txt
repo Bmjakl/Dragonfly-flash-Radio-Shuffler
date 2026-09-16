@@ -1,0 +1,105 @@
+// ==UserScript==
+// @name         Dragonfly-flash Radio Shuffler
+// @namespace    https://dragonfly-flash.com/
+// @version      1.0.0
+// @description  Кнопка перемешивания плейлиста радио сообщества для Стрекозы
+// @author       FObot
+// @match        https://dragonfly-flash.com/*
+// @match        https://www.dragonfly-flash.com/*
+// @match        https://dragonfly-flash.ru/*
+// @match        https://www.dragonfly-flash.ru/*
+// @grant        none
+// @run-at       document-start
+// ==/UserScript==
+
+(function () {
+    'use strict';
+    const BTN_ID = 'df-shuffle-playlist-btn';
+    const DELAY_MS = 8;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const getZone = () => document.getElementById('radio-playlist-zone');
+    const getTrackIds = () => {
+        const zone = getZone();
+        if (!zone) return [];
+        return [...zone.querySelectorAll('.radio-track-row button.danger')]
+            .map((b) => (b.getAttribute('onclick') || '').match(/radioRemoveTrack\((\d+)\)/)?.[1])
+            .filter(Boolean);};
+    const findIndexById = (id) => {
+        const zone = getZone();
+        if (!zone) return -1;
+        const rows = zone.querySelectorAll('.radio-track-row');
+        for (let i = 0; i < rows.length; i++) {
+            const m = (rows[i].querySelector('button.danger')?.getAttribute('onclick') || '')
+                .match(/radioRemoveTrack\((\d+)\)/);
+            if (m && m[1] === id) return i;}
+        return -1;};
+
+    const clickUp = async (index) => {
+        const row = getZone()?.querySelectorAll('.radio-track-row')[index];
+        const btn = row?.querySelector('button[title="Выше"]');
+        if (!btn) return false;
+        btn.click();
+        await sleep(DELAY_MS);
+        return true;};
+
+    async function shufflePlaylist() {
+        const btn = document.getElementById(BTN_ID);
+        const ids = getTrackIds();
+        if (ids.length < 2) { alert('Недостаточно треков.'); return; }
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        const target = (() => {
+            const N = ids.length;
+            if (N < 2) return [...ids];
+            const origIdx = new Map(ids.map((id, i) => [id, i]));
+            let best = null, bestScore = -1;
+            for (let attempt = 0; attempt < 200; attempt++) {
+                const c = [...ids];
+                for (let i = N - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [c[i], c[j]] = [c[j], c[i]];}
+                let fixed = 0, minShift = N, totalShift = 0;
+                for (let i = 0; i < N; i++) {
+                    const d = Math.abs(i - origIdx.get(c[i]));
+                    if (d === 0) fixed++;
+                    if (d < minShift) minShift = d;
+                    totalShift += d;}
+                if (fixed === 0 && minShift >= 3) return c;
+                if (fixed === 0 && totalShift > bestScore) {
+                    bestScore = totalShift;
+                    best = c;}}
+             if (!best) {
+                const offset = 1 + Math.floor(Math.random() * (N - 1));
+                best = ids.map((_, i) => ids[(i + offset) % N]);}
+            return best;})();
+        for (let pos = 0; pos < target.length; pos++) {
+            let cur = findIndexById(target[pos]);
+            let guard = 0;
+            while (cur > pos && guard++ < 100) {
+                if (!await clickUp(cur)) break;
+                const next = findIndexById(target[pos]);
+                if (next === cur) break;
+                cur = next;}}
+        btn.disabled = false;
+        btn.textContent = '🔀';}
+
+    function insertButton() {
+        if (document.getElementById(BTN_ID)) return true;
+        const zone = getZone();
+        if (!zone?.parentNode) return false;
+        const btn = document.createElement('button');
+        btn.id = BTN_ID;
+        btn.type = 'button';
+        btn.textContent = '🔀';
+        btn.style.cssText = 'margin:12px 0 6px;padding:8px 16px;background:#245edb;color:#fff;border:1px solid #003c74;border-radius:3px;cursor:pointer;font:bold 12px Tahoma,sans-serif;';
+        btn.addEventListener('click', shufflePlaylist);
+        const prev = zone.previousElementSibling;
+        (prev?.classList.contains('radio-box-title') ? prev : zone)
+            .parentNode.insertBefore(btn, prev?.classList.contains('radio-box-title') ? prev : zone);
+        return true;}
+    const start = () => {
+        if (!document.body) return setTimeout(start, 100);
+        new MutationObserver(insertButton).observe(document.body, { childList: true, subtree: true });
+        insertButton();};
+    start();
+})();
