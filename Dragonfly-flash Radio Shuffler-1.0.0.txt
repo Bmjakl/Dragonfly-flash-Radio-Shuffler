@@ -45,7 +45,7 @@
     async function shufflePlaylist() {
         const btn = document.getElementById(BTN_ID);
         const ids = getTrackIds();
-        if (ids.length < 2) { alert('Недостаточно треков.'); return; }
+        if (ids.length < 2) { alert('Не-а.'); return; }
         btn.disabled = true;
         btn.textContent = '⏳';
         const target = (() => {
